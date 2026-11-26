@@ -69,13 +69,13 @@ from telethon.tl.types import (
 # ══════════════════════════════════════════════════════════════════════
 #  تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-TELEGRAM_TOKEN = "8179859382:AAHnhHIa5-DXV923UfRdbEgOUnLO5P79qIs"
-ADMIN_IDS: set[int] = {8503523539}
-ADMIN_USERNAME = "@Saeqehe"
+TELEGRAM_TOKEN = "8690544482:AAFfhlxWu8tfiRQSwkZHi6c2-s2tUnWlZYA"
+ADMIN_IDS: set[int] = {7468529723}
+ADMIN_USERNAME = "@iD_ASTRO"
 SUPPORT_USERNAME = ADMIN_USERNAME
 
 # ── اشتراک ──
-ADMIN_CARD_NUMBER = "6219861453153586"   # ← شماره کارت برای واریز
+ADMIN_CARD_NUMBER = "6037 6976 8085 2388"   # ← شماره کارت برای واریز
 PREMIUM_PRICE     = "350,000 تومان"      # ← قیمت اشتراک
 PREMIUM_MONTHS    = 1                    # تعداد ماه
 FREE_LIMIT        = 100                  # سقف رایگان هر نوع گزارش
@@ -85,7 +85,7 @@ REPORT_DELAY      = 3                    # فاصله پیش‌فرض بین گ�
 RUBIKA_TYPE_GAP   = 8                    # مکث بین «انواع» گزارش روبیکا (ثانیه) — ضد بن
 
 # ── کانال‌های اجباری ──
-REQUIRED_CHANNELS = ["mrvpn294", "amirwebcode1"]
+REQUIRED_CHANNELS = ["ASTRO_DINET"]
 
 # ── API اکانت‌های تلگرام (ریپورتر) ──
 TELEGRAM_API_ID   = 26956028
