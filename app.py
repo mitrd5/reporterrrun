@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║        ربات همه‌کاره ریپورتر  —  روبیکا + تلگرام  (تک فایل)          ║
+║        ربات ریپورتر روبیکا با رابط تلگرام (تک فایل)          ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  نصب:                                                               ║
-║      pip install aiogram rubpy-py pycryptodome telethon pytz        ║
+║      pip install aiogram rubpy-py pycryptodome pytz        ║
 ║                                                                      ║
 ║  اجرا:                                                               ║
 ║      python reporter_bot.py                                         ║
@@ -45,31 +45,10 @@ from aiogram.types import (
     Update,
 )
 
-# ── اکانت‌های تلگرام (ریپورتر) ──
-from telethon import TelegramClient, errors
-from telethon.sessions import StringSession
-from telethon.tl.functions.account import ReportPeerRequest
-from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.functions.messages import (
-    CheckChatInviteRequest,
-    ReportRequest,
-)
-from telethon.tl.types import (
-    InputReportReasonChildAbuse,
-    InputReportReasonCopyright,
-    InputReportReasonFake,
-    InputReportReasonIllegalDrugs,
-    InputReportReasonOther,
-    InputReportReasonPersonalDetails,
-    InputReportReasonPornography,
-    InputReportReasonSpam,
-    InputReportReasonViolence,
-)
-
 # ══════════════════════════════════════════════════════════════════════
 #  تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-TELEGRAM_TOKEN = "8690544482:AAFfhlxWu8tfiRQSwkZHi6c2-s2tUnWlZYA"
+TELEGRAM_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_IDS: set[int] = {7468529723}
 ADMIN_USERNAME = "@iD_ASTRO"
 SUPPORT_USERNAME = ADMIN_USERNAME
@@ -86,11 +65,6 @@ RUBIKA_TYPE_GAP   = 8                    # مکث بین «انواع» گزار
 
 # ── کانال‌های اجباری ──
 REQUIRED_CHANNELS = ["ASTRO_DINET"]
-
-# ── API اکانت‌های تلگرام (ریپورتر) ──
-TELEGRAM_API_ID   = 26956028
-TELEGRAM_API_HASH = "734deef3f0e1f9e3fec13ad19b5bff9e"
-TG_CODE_TTL       = 240          # مدت اعتبار کد ورود تلگرام (ثانیه)
 
 # ── گروه گزارش عملیات (اختیاری) ──
 # مثال: -1001234567890  یا  "@my_report_channel"  — اگر نمی‌خواهی خالی بگذار
@@ -114,13 +88,6 @@ os.makedirs(RUBIKA_SESSIONS, exist_ok=True)
 user_stop: dict[int, bool] = {}
 # قفل انتخاب نوع گزارش تا کلیک‌های سریع، انتخاب‌های قبلی را پاک نکنند
 _rt_locks: dict[int, asyncio.Lock] = {}
-# کلاینت‌های موقت هنگام لاگین تلگرام
-TG_LOGIN_CLIENTS: dict[int, TelegramClient] = {}
-# اطلاعات کد ارسال‌شده (phone / hash / زمان ارسال) برای هر کاربر
-TG_LOGIN_META: dict[int, dict] = {}
-# قفل ورود هر کاربر تا درخواست‌های هم‌زمان کد قبلی را باطل نکنند
-TG_LOGIN_LOCKS: dict[int, asyncio.Lock] = {}
-
 # ══════════════════════════════════════════════════════════════════════
 #  انواع گزارش روبیکا
 # ══════════════════════════════════════════════════════════════════════
@@ -132,22 +99,6 @@ REPORT_TYPES_MAP: dict[str, tuple[str, ReportType]] = {
     "5": ("©️ نقض حق‌نشر",    ReportType.COPYRIGHT),
     "6": ("🎣 فیشینگ",        ReportType.FISHING),
     "7": ("📝 سایر",          ReportType.OTHER),
-}
-
-# ══════════════════════════════════════════════════════════════════════
-#  دلایل گزارش تلگرام
-# ══════════════════════════════════════════════════════════════════════
-TG_REASONS: dict[str, tuple[str, object, str]] = {
-    "1":  ("🚫 اسپم",              InputReportReasonSpam(),            "This content is spam and violates Telegram policies"),
-    "2":  ("❌ جعلی",              InputReportReasonFake(),            "This content is fake and misleading"),
-    "3":  ("🔪 خشونت",             InputReportReasonViolence(),        "This content promotes violence"),
-    "4":  ("🔞 مستهجن",            InputReportReasonPornography(),     "This content contains illegal pornography"),
-    "5":  ("👶 کودک‌آزاری",        InputReportReasonChildAbuse(),      "This content involves child abuse"),
-    "6":  ("©️ حق‌نشر",             InputReportReasonCopyright(),       "This content violates copyright laws"),
-    "7":  ("📋 اطلاعات شخصی",      InputReportReasonPersonalDetails(), "This content exposes personal details without consent"),
-    "8":  ("📝 سایر",              InputReportReasonOther(),           "This content violates Telegram Terms of Service"),
-    "9":  ("💸 کلاهبرداری",        InputReportReasonOther(),           "This channel/post/user is involved in scam and fraud"),
-    "10": ("💊 مواد مخدر",         InputReportReasonIllegalDrugs(),    "This content promotes illegal drugs"),
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -170,21 +121,6 @@ class Form(StatesGroup):
     rb_delay       = State()
     rb_type_gap    = State()
     rb_accounts    = State()
-
-    # ── لاگین تلگرام ──
-    tg_phone    = State()
-    tg_code     = State()
-    tg_password = State()
-
-    # ── گزارش تلگرام ──
-    tg_accounts   = State()
-    tg_target     = State()
-    tg_links      = State()
-    tg_join       = State()
-    tg_reason     = State()
-    tg_manual     = State()
-    tg_per_acc    = State()
-    tg_delay      = State()
 
     # ── بقیه ──
     receipt         = State()
@@ -276,17 +212,7 @@ def init_db() -> None:
                 UNIQUE(telegram_id, phone)
             )
         """
-    telegram_accounts_sql = """
-            CREATE TABLE IF NOT EXISTS telegram_accounts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
-                phone       TEXT NOT NULL,
-                session_str TEXT NOT NULL,
-                label       TEXT,
-                created_at  TEXT DEFAULT (datetime('now')),
-                UNIQUE(telegram_id, phone)
-            )
-        """
+
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
@@ -322,7 +248,6 @@ def init_db() -> None:
             "sub_used": "INTEGER DEFAULT 0",
             "sub_type": "TEXT",
             "sub_granted_at": "TEXT",
-            "tg_access": "INTEGER DEFAULT 0",
             "is_blocked": "INTEGER DEFAULT 0",
         }.items():
             try:
@@ -333,7 +258,6 @@ def init_db() -> None:
         # ── جدول اکانت‌ها: هر کاربر باید بتواند تعداد نامحدود اکانت اضافه کند ──
         for table, create_sql in (
             ("rubika_accounts", rubika_accounts_sql),
-            ("telegram_accounts", telegram_accounts_sql),
         ):
             if _forces_single_account(conn, table):
                 _rebuild_accounts_table(conn, table, create_sql)
@@ -341,7 +265,7 @@ def init_db() -> None:
                 conn.execute(create_sql)
 
         # ── در نبود قید یکتای ترکیبی، ایندکس یکتا روی (کاربر، شماره) بساز ──
-        for table in ("rubika_accounts", "telegram_accounts"):
+        for table in ("rubika_accounts",):
             if not _has_composite_unique(conn, table):
                 try:
                     conn.execute(
@@ -482,12 +406,6 @@ def is_premium(telegram_id: int) -> bool:
     return is_premium_active(get_user(telegram_id))
 
 
-def has_tg_access(telegram_id: int) -> bool:
-    """دسترسی به ریپورتر تلگرام: دسترسی اختصاصی + اشتراک فعال."""
-    user = get_user(telegram_id)
-    if not user:
-        return False
-    return bool(user.get("tg_access")) and is_premium_active(user)
 
 
 def limit_of(telegram_id: int) -> int:
@@ -507,7 +425,7 @@ def remaining_quota(telegram_id: int) -> Optional[int]:
 
 
 def grant_subscription(telegram_id: int, quota: int, hours: int,
-                       sub_type: str = "gift", tg_access: bool = True) -> None:
+                       sub_type: str = "gift") -> None:
     """اشتراک سفارشی: سقف گزارش + مدت به ساعت. مقدار قبلی جایگزین می‌شود."""
     now = datetime.now()
     until = now + timedelta(hours=max(1, int(hours)))
@@ -519,7 +437,6 @@ def grant_subscription(telegram_id: int, quota: int, hours: int,
         sub_used=0,
         sub_type=sub_type,
         sub_granted_at=now.isoformat(timespec="seconds"),
-        tg_access=1 if tg_access else 0,
     )
 
 
@@ -527,11 +444,11 @@ def set_premium(telegram_id: int, months: int = 1, hours: int = 0, days: int = 0
                 quota: int = 0, sub_type: str = "gift") -> None:
     """سازگاری با کد قبلی."""
     total_hours = months * 30 * 24 + days * 24 + hours
-    grant_subscription(telegram_id, quota, total_hours, sub_type=sub_type, tg_access=True)
+    grant_subscription(telegram_id, quota, total_hours, sub_type=sub_type)
 
 
 def extend_subscription(telegram_id: int, add_quota: int, add_hours: int,
-                        sub_type: str = "gift", tg_access: bool = False) -> None:
+                        sub_type: str = "gift") -> None:
     """اشتراک فعلی را تمدید/تقویت می‌کند: سقف باقی‌مانده + سقف جدید و زمان از انتهای فعلی."""
     now = datetime.now()
     user = get_user(telegram_id)
@@ -561,9 +478,6 @@ def extend_subscription(telegram_id: int, add_quota: int, add_hours: int,
         sub_type=(user.get("sub_type") or sub_type) if was_premium else sub_type,
         sub_granted_at=now.isoformat(timespec="seconds"),
     )
-    # دسترسی تلگرام فقط وقتی صریحاً خواسته شود؛ هرگز پس گرفته نمی‌شود
-    if tg_access:
-        kwargs["tg_access"] = 1
     upsert_user(telegram_id, **kwargs)
 
 
@@ -974,120 +888,6 @@ def rubika_pool(tg_id: int, mode: str | None = POOL_ALL) -> list[str]:
     return result
 
 
-def tg_pool(tg_id: int, mode: str | None = POOL_ALL) -> list[dict]:
-    """اکانت‌های تلگرام برای گزارش (اکانت‌های خودِ کاربر اول، بعد دیگران)."""
-    if mode == POOL_ME:
-        return get_tg_accounts(tg_id)
-
-    seen: set[str] = set()
-    result: list[dict] = []
-    for acc in list(get_tg_accounts(tg_id)) + get_all_tg_accounts():
-        key = tg_phone_key(acc.get("phone") or "") or f"id:{acc.get('id')}"
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(acc)
-    return result
-
-
-# ── اکانت‌های تلگرام ──
-def add_tg_account(tg_id: int, phone: str, session_str: str, label: str = "") -> None:
-    def _write() -> None:
-        with sqlite3.connect(DB_PATH) as conn:
-            # حذف رکوردهای تکراری همان شماره با هر قالبی (۰۹۱۲... / +۹۸۹۱۲... / ۹۸۹۱۲...)
-            key = tg_phone_key(phone)
-            dup_ids = [
-                r[0] for r in conn.execute(
-                    "SELECT id, phone FROM telegram_accounts WHERE telegram_id = ?", (tg_id,)
-                ).fetchall()
-                if tg_phone_key(r[1]) == key
-            ]
-            for dup_id in dup_ids:
-                conn.execute(
-                    "DELETE FROM telegram_accounts WHERE id = ? AND telegram_id = ?",
-                    (dup_id, tg_id),
-                )
-            conn.execute(
-                "INSERT INTO telegram_accounts (telegram_id, phone, session_str, label) "
-                "VALUES (?, ?, ?, ?)",
-                (tg_id, phone, session_str, label),
-            )
-            conn.commit()
-
-    _run_account_write(_write)
-
-
-def get_tg_accounts(tg_id: int) -> list[dict]:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM telegram_accounts WHERE telegram_id = ? ORDER BY id", (tg_id,)
-        ).fetchall()
-    seen: set[str] = set()
-    result: list[dict] = []
-    for row in rows:
-        acc = dict(row)
-        key = tg_phone_key(acc.get("phone") or "") or f"id:{acc['id']}"
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(acc)
-    return result
-
-
-def get_all_tg_accounts() -> list[dict]:
-    """کل اکانت‌های تلگرام ثبت‌شده در ربات (بانک مشترک) — هر شماره یک‌بار."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM telegram_accounts ORDER BY id").fetchall()
-    seen: set[str] = set()
-    result: list[dict] = []
-    for row in rows:
-        acc = dict(row)
-        key = tg_phone_key(acc.get("phone") or "") or f"id:{acc['id']}"
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(acc)
-    return result
-
-
-def get_tg_account(tg_id: int, acc_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM telegram_accounts WHERE id = ? AND telegram_id = ?",
-            (acc_id, tg_id),
-        ).fetchone()
-    return dict(row) if row else None
-
-
-def delete_tg_account(tg_id: int, acc_id: int) -> None:
-    with sqlite3.connect(DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, phone FROM telegram_accounts WHERE id = ? AND telegram_id = ?",
-            (acc_id, tg_id),
-        ).fetchone()
-        key = tg_phone_key(row[1]) if row else ""
-        conn.execute(
-            "DELETE FROM telegram_accounts WHERE id = ? AND telegram_id = ?",
-            (acc_id, tg_id),
-        )
-        if key:
-            dup_ids = [
-                r[0] for r in conn.execute(
-                    "SELECT id, phone FROM telegram_accounts WHERE telegram_id = ?", (tg_id,)
-                ).fetchall()
-                if tg_phone_key(r[1]) == key
-            ]
-            for dup_id in dup_ids:
-                conn.execute(
-                    "DELETE FROM telegram_accounts WHERE id = ? AND telegram_id = ?",
-                    (dup_id, tg_id),
-                )
-        conn.commit()
-
-
 # ══════════════════════════════════════════════════════════════════════
 #  ابزارهای کمکی
 # ══════════════════════════════════════════════════════════════════════
@@ -1111,43 +911,6 @@ def _normalize_phone(phone: str) -> Optional[str]:
     if re.match(r"^98\d{10}$", phone):
         return phone
     return None
-
-
-def validate_tg_phone(phone: str) -> bool:
-    if not phone.startswith("+"):
-        return False
-    clean = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    if len(clean) < 8 or len(clean) > 16:
-        return False
-    return clean[1:].isdigit()
-
-
-def normalize_tg_phone(raw: str | None) -> Optional[str]:
-    """شماره تلگرام را به شکل +<کد کشور><شماره> برمی‌گرداند."""
-    trans = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-    text = (raw or "").translate(trans).strip()
-    digits = re.sub(r"\D", "", text)
-    if not digits:
-        return None
-    if text.startswith("00"):
-        digits = digits[2:]
-    if len(digits) == 11 and digits.startswith("0"):   # شماره محلی ایرانی
-        digits = "98" + digits[1:]
-    if len(digits) < 8 or len(digits) > 15:
-        return None
-    return "+" + digits
-
-
-def tg_phone_key(phone: str | None) -> str:
-    """کلید یکسان‌سازی شماره برای حذف تکراری‌ها (۰۹۱۲...، +۹۸۹۱۲... و ۹۸۹۱۲... یکی می‌شوند)."""
-    digits = re.sub(r"\D", "", phone or "")
-    if digits.startswith("00"):
-        digits = digits[2:]
-    if len(digits) == 11 and digits.startswith("0"):
-        digits = digits[1:]
-    elif len(digits) == 12 and digits.startswith("98"):
-        digits = digits[2:]
-    return digits
 
 
 def session_exists(session_path: str | None) -> bool:
@@ -1353,7 +1116,6 @@ def kb_main(tg_id: int) -> InlineKeyboardMarkup:
     rows = [
         [
             btn("🚨 ریپورتر روبیکا", "menu_rubika", ButtonStyle.DANGER),
-            btn("🚀 ریپورتر تلگرام", "menu_telegram", ButtonStyle.PRIMARY),
         ],
         [
             btn("📡 عملیات زنده", "live_ops", ButtonStyle.SUCCESS),
@@ -1386,13 +1148,6 @@ def kb_menu_return() -> InlineKeyboardMarkup:
     ])
 
 
-def kb_tg_resend() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [btn("♻️ ارسال کد جدید", "tg_resend", ButtonStyle.SUCCESS)],
-        [btn("🔙 بازگشت به منو", "back_menu", ButtonStyle.PRIMARY)],
-    ])
-
-
 def kb_rubika(tg_id: int) -> InlineKeyboardMarkup:
     accounts = get_rubika_accounts(tg_id)
     rows = [
@@ -1405,32 +1160,6 @@ def kb_rubika(tg_id: int) -> InlineKeyboardMarkup:
             btn("📊 وضعیت حساب", "account_status", ButtonStyle.PRIMARY),
         ],
         [btn("🔙 بازگشت به منو", "back_menu", ButtonStyle.PRIMARY)],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def kb_telegram(tg_id: int) -> InlineKeyboardMarkup:
-    accounts = get_tg_accounts(tg_id)
-    rows = [
-        [
-            btn("📝 ریپورت کانال/گروه", "tgr_channel", ButtonStyle.DANGER),
-            btn("📝 ریپورت پست", "tgr_post", ButtonStyle.DANGER),
-        ],
-        [
-            btn("👤 ریپورت پروفایل", "tgr_profile", ButtonStyle.PRIMARY),
-            btn("🤖 ریپورت ربات", "tgr_bot", ButtonStyle.PRIMARY),
-        ],
-        [
-            btn("👤 ریپورت اکانت", "tgr_account", ButtonStyle.PRIMARY),
-            btn("📋 ریپورت دستی", "tgr_manual", ButtonStyle.PRIMARY),
-        ],
-        [
-            btn(f"➕ افزودن اکانت تلگرام", "tga_add", ButtonStyle.SUCCESS),
-            btn(f"📱 اکانت‌های من ({len(accounts)})", "tga_list", ButtonStyle.PRIMARY),
-        ],
-        [
-            btn("🔙 بازگشت به منو", "back_menu", ButtonStyle.PRIMARY),
-        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1464,30 +1193,6 @@ def kb_running() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [btn("📡 عملیات زنده", "live_ops", ButtonStyle.SUCCESS)],
         [btn("🛑 توقف", "stop_op", ButtonStyle.DANGER)],
-    ])
-
-
-def kb_reason() -> InlineKeyboardMarkup:
-    buttons = []
-    row = []
-    for k, (label, _, _) in TG_REASONS.items():
-        row.append(btn(label, f"tgreason_{k}", ButtonStyle.PRIMARY))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.append([btn("🔙 بازگشت", "menu_telegram", ButtonStyle.PRIMARY)])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def kb_join_choice() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            btn("✅ جوین بشن", "tgjoin_yes", ButtonStyle.SUCCESS),
-            btn("❌ جوین نشن", "tgjoin_no", ButtonStyle.DANGER),
-        ],
-        [btn("🔙 بازگشت", "menu_telegram", ButtonStyle.PRIMARY)],
     ])
 
 
@@ -1564,7 +1269,6 @@ async def cmd_start(message: Message, command: CommandStart, state: FSMContext) 
         "👋 به ربات ریپورتر خوش آمدید!\n\n"
         "یکی از بخش‌های زیر را انتخاب کنید:\n"
         "🚨 <b>ریپورتر روبیکا</b> — رایگان تا ۱۰۰ گزارش\n"
-        "🚀 <b>ریپورتر تلگرام</b> — نیازمند اشتراک\n\n"
         f"وضعیت شما: {'⭐ اشتراکی' if prem else '🆓 رایگان'}",
         reply_markup=kb_main(tg_id),
         parse_mode="HTML",
@@ -1621,17 +1325,13 @@ async def account_status(callback: CallbackQuery, state: FSMContext) -> None:
         until = f"\n⏳ انقضا: {fmt_dt(user['premium_until'])}"
 
     rb = len(get_rubika_accounts(tg_id))
-    tg = len(get_tg_accounts(tg_id))
-    tg_line = "🚀 ریپورتر تلگرام: " + ("فعال ✅" if has_tg_access(tg_id) else "غیرفعال ⛔")
 
     await callback.message.answer(
         f"📊 <b>وضعیت حساب</b>\n\n"
         f"پلن: {plan}{until}\n"
         f"{quota_line}\n"
         f"🎯 سقف هر نوع گزارش در هر عملیات: {limit}\n"
-        f"{tg_line}\n"
         f"📱 اکانت روبیکا: {rb}\n"
-        f"✈️ اکانت تلگرام: {tg}\n"
         f"📢 کل گزارش‌های ارسال‌شده: {user.get('total_reports', 0) if user else 0}",
         reply_markup=kb_menu_return(),
         parse_mode="HTML",
@@ -1652,7 +1352,6 @@ async def subscription_cb(callback: CallbackQuery, state: FSMContext) -> None:
             f"📅 تا: {fmt_dt(user['premium_until'])}\n"
             f"📦 نوع: {sub_type_label(user.get('sub_type'))}\n"
             f"🎯 باقی‌مانده: {left}\n\n"
-            f"🚀 ریپورتر تلگرام: {'فعال' if has_tg_access(tg_id) else 'غیرفعال'}\n\n"
             "برای تمدید یا افزایش سقف، رسید پرداخت جدید را بفرستید.",
             reply_markup=kb_menu_return(),
         )
@@ -1662,7 +1361,6 @@ async def subscription_cb(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(
         f"💎 <b>خرید اشتراک</b>\n\n"
         f"با خرید اشتراک:\n"
-        f"• 🚀 ریپورتر تلگرام فعال می‌شود\n"
         f"• 🚨 سقف گزارش روبیکا تا {PREMIUM_LIMIT} در هر نوع می‌رسد\n"
         f"• 📦 {DEFAULT_SUB_QUOTA} گزارش در کل\n\n"
         f"💰 مبلغ: {PREMIUM_PRICE}\n"
@@ -1684,11 +1382,6 @@ async def help_cb(callback: CallbackQuery, state: FSMContext) -> None:
         "۲) «ثبت گزارش روبیکا» را بزن\n"
         "۳) هدف را با یوزرنیم یا شناسه بفرست\n"
         "۴) نوع، تعداد، فاصله و تعداد اکانت را انتخاب کن\n\n"
-        "🚀 <b>ریپورتر تلگرام</b> (نیازمند اشتراک)\n"
-        "۱) اکانت تلگرام اضافه کن (شماره + کد + رمز دو مرحله‌ای)\n"
-        "۲) نوع ریپورت را انتخاب کن\n"
-        "۳) لینک/یوزرنیم هدف را بفرست\n"
-        "۴) دلیل، تعداد هر اکانت و فاصله را بده\n\n"
         f"🆓 رایگان: {FREE_LIMIT} گزارش در هر نوع\n"
         f"💎 اشتراکی: {PREMIUM_LIMIT} گزارش در هر نوع\n\n"
         "⛔ توقف عملیات: /stop",
@@ -1876,7 +1569,7 @@ async def admin_approve_sub(callback: CallbackQuery, state: FSMContext) -> None:
     if data.startswith("approve_sub_"):
         target_id = int(data.split("_")[-1])
         grant_subscription(target_id, DEFAULT_SUB_QUOTA, PREMIUM_MONTHS * 30 * 24,
-                           sub_type="paid", tg_access=True)
+                           sub_type="paid")
         try:
             await callback.message.edit_caption(
                 caption=f"✅ اشتراک فعال شد!\n👤 کاربر: {target_id}", reply_markup=None
@@ -1892,7 +1585,7 @@ async def admin_approve_sub(callback: CallbackQuery, state: FSMContext) -> None:
                     "🎉 اشتراک شما فعال شد!\n\n"
                     f"👑 اشتراک تا {until} فعال است.\n"
                     f"📦 سقف: {user.get('sub_quota', 0) if user else 0} گزارش\n"
-                    f"🚀 ریپورتر تلگرام فعال شد."
+                    f"🚀 امکانات روبیکا فعال شد."
                 ),
                 reply_markup=kb_main(target_id),
             )
@@ -1918,7 +1611,7 @@ async def admin_approve_sub(callback: CallbackQuery, state: FSMContext) -> None:
 # ══════════════════════════════════════════════════════════════════════
 #  بخش کاربر: عملیات زنده / اهداف / تاریخچه
 # ══════════════════════════════════════════════════════════════════════
-PLATFORM_ICON = {"rubika": "🚨", "telegram": "🚀"}
+PLATFORM_ICON = {"rubika": "🚨"}
 OP_STATUS_LABEL = {
     "running": "🟡 در حال اجرا",
     "done": "🟢 تمام شد",
@@ -2052,17 +1745,6 @@ async def my_history_cb(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-def _tg_ban_errors() -> tuple:
-    return (
-        errors.ChannelPrivateError,
-        errors.UsernameNotOccupiedError,
-        errors.UserDeactivatedBanError,
-        errors.UserDeactivatedError,
-        errors.ChannelInvalidError,
-        errors.PeerIdInvalidError,
-    )
-
-
 async def refresh_targets_cb(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer("🔄 در حال بررسی...")
     tg_id = callback.from_user.id
@@ -2074,38 +1756,6 @@ async def refresh_targets_cb(callback: CallbackQuery, state: FSMContext) -> None
     checked = 0
     suspended = 0
     active = 0
-
-    # ── بررسی اهداف تلگرام با اولین اکانت ──
-    tg_targets = [t for t in targets if t["platform"] == "telegram"][:10]
-    accounts = get_tg_accounts(tg_id)
-    if tg_targets and accounts:
-        client = TelegramClient(
-            StringSession(accounts[0]["session_str"]),
-            TELEGRAM_API_ID, TELEGRAM_API_HASH,
-            device_model="Reporter", system_version="1.0",
-        )
-        try:
-            await client.connect()
-            if await client.is_user_authorized():
-                for t in tg_targets:
-                    checked += 1
-                    try:
-                        ent = await tg_resolve_entity(client, t["target"])
-                        if ent:
-                            set_target_status(tg_id, "telegram", t["target"], "active")
-                            active += 1
-                    except _tg_ban_errors():
-                        set_target_status(tg_id, "telegram", t["target"], "suspended")
-                        suspended += 1
-                    except Exception:
-                        pass
-        except Exception as exc:
-            logger.error("refresh_targets tg: %s", exc)
-        finally:
-            try:
-                await client.disconnect()
-            except Exception:
-                pass
 
     # ── بررسی اهداف روبیکا (یوزرنیم‌ها) ──
     rb_targets = [t for t in targets if t["platform"] == "rubika"][:10]
@@ -2129,7 +1779,7 @@ async def refresh_targets_cb(callback: CallbackQuery, state: FSMContext) -> None
 
     if checked == 0:
         await callback.message.answer(
-            "ℹ️ برای بررسی وضعیت، حداقل یک اکانت (تلگرام یا روبیکا) لازم است.",
+            "ℹ️ برای بررسی وضعیت، حداقل یک اکانت روبیکا لازم است.",
             reply_markup=kb_menu_return(),
         )
         return
@@ -2864,978 +2514,6 @@ async def _rb_single_loop(session_path: str, object_guid: str, report_type_enum:
     return sent, failed
 
 # ══════════════════════════════════════════════════════════════════════
-#  تلگرام — ابزار هدف و گزارش
-# ══════════════════════════════════════════════════════════════════════
-def parse_tg_link(text: str) -> tuple[object, Optional[int]]:
-    """ورودی: لینک/یوزرنیم/آیدی. خروجی: (username یا id عددی، msg_id)"""
-    t = (text or "").strip()
-    t = re.sub(r"^(https?://)?(www\.)?(t\.me|telegram\.me|telegram\.dog)/", "", t, flags=re.I)
-    t = t.strip().strip("/")
-    if not t:
-        return None, None
-    parts = [p for p in t.split("/") if p]
-    if not parts:
-        return None, None
-    # لینک خصوصی: t.me/c/123456/78
-    if parts[0] == "c" and len(parts) >= 2 and parts[1].isdigit():
-        channel_id = int("-100" + parts[1])
-        msg_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
-        return channel_id, msg_id
-    if re.fullmatch(r"-?\d+", parts[0]):
-        msg_id = int(parts[1]) if len(parts) > 1 and parts[1].lstrip("-").isdigit() else None
-        return int(parts[0]), msg_id
-    username = parts[0].lstrip("@")
-    msg_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
-    return username, msg_id
-
-
-async def tg_resolve_entity(client: TelegramClient, text: str):
-    t = (text or "").strip()
-    low = t.lower()
-
-    # لینک دعوت خصوصی
-    if "joinchat" in low or "/+" in t or low.startswith("+"):
-        invite = t.rstrip("/").split("/")[-1].lstrip("+")
-        res = await client(CheckChatInviteRequest(invite))
-        return getattr(res, "chat", None)
-
-    ident, _ = parse_tg_link(t)
-    if ident is None:
-        raise ValueError("هدف نامعتبر است")
-    if isinstance(ident, int):
-        return await client.get_entity(ident)
-    return await client.get_entity("@" + str(ident))
-
-
-async def tg_send_report(client: TelegramClient, entity, msg_id: Optional[int],
-                         reason, message: str) -> None:
-    peer = await client.get_input_entity(entity)
-    if msg_id:
-        # در API جدید تلگرام، گزارش پست دلیل (reason) جداگانه ندارد
-        try:
-            await client(ReportRequest(peer=peer, id=[msg_id], option=b"", message=message))
-            return
-        except Exception as exc:
-            logger.warning("report post failed (%s), fallback to peer report", exc)
-    await client(ReportPeerRequest(peer=peer, reason=reason, message=message))
-
-
-def new_tg_client(session_str: str = "") -> TelegramClient:
-    return TelegramClient(
-        StringSession(session_str or None),
-        TELEGRAM_API_ID,
-        TELEGRAM_API_HASH,
-        device_model="Reporter",
-        system_version="1.0",
-        app_version="1.0",
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  تلگرام — منو
-# ══════════════════════════════════════════════════════════════════════
-async def menu_telegram_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    user = get_user(tg_id)
-
-    if not is_premium_active(user):
-        await callback.message.answer(
-            "🚀 <b>ریپورتر تلگرام</b>\n\n"
-            "⛔ این بخش فقط برای کاربران اشتراکی فعال است.\n"
-            "برای استفاده ابتدا اشتراک تهیه کنید.\n\n"
-            f"💰 {PREMIUM_PRICE} / {PREMIUM_MONTHS} ماه\n"
-            f"📦 {DEFAULT_SUB_QUOTA} گزارش + دسترسی ریپورتر تلگرام",
-            reply_markup=kb_buy(),
-            parse_mode="HTML",
-        )
-        return
-
-    if not user.get("tg_access"):
-        await callback.message.answer(
-            "🚀 <b>ریپورتر تلگرام</b>\n\n"
-            "🔒 این بخش <b>اختصاصی</b> است و فقط کاربرانی که ادمین اجازه داده باشد "
-            "می‌توانند از پنل استفاده کنند.\n\n"
-            "برای دریافت دسترسی با پشتیبانی تماس بگیرید.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [btn("📞 درخواست دسترسی از پشتیبانی", "support", ButtonStyle.SUCCESS)],
-                [btn("🔙 بازگشت", "back_menu", ButtonStyle.PRIMARY)],
-            ]),
-            parse_mode="HTML",
-        )
-        return
-
-    accounts = get_tg_accounts(tg_id)
-    await callback.message.answer(
-        "🚀 <b>ریپورتر تلگرام</b>\n\n"
-        f"📱 اکانت‌های تلگرام شما: {len(accounts)}\n"
-        f"🌍 کل اکانت‌های ربات: {len(get_all_tg_accounts())}\n"
-        f"🎯 سقف هر نوع گزارش: {PREMIUM_LIMIT}\n"
-        f"📦 باقی‌مانده اشتراک: {'بی‌نهایت' if remaining_quota(tg_id) is None else remaining_quota(tg_id)}\n\n"
-        "از دکمه‌های زیر استفاده کنید:",
-        reply_markup=kb_telegram(tg_id),
-        parse_mode="HTML",
-    )
-    await state.set_state(Form.main_menu)
-
-
-async def tga_list_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    page = _page_of(callback.data or "", "tga_page_")
-    accounts = get_tg_accounts(tg_id)
-
-    if not accounts:
-        await callback.message.answer(
-            "📱 هنوز اکانت تلگرامی اضافه نکرده‌اید.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [btn("➕ افزودن اکانت تلگرام", "tga_add", ButtonStyle.SUCCESS)],
-                [btn("🔙 بازگشت", "menu_telegram", ButtonStyle.PRIMARY)],
-            ]),
-        )
-        return
-
-    per = ACCOUNTS_PER_PAGE
-    pages = max(1, (len(accounts) + per - 1) // per)
-    page = min(page, pages - 1)
-    chunk = accounts[page * per:(page + 1) * per]
-
-    rows = []
-    for acc in chunk:
-        label = acc.get("label") or "اکانت"
-        rows.append([
-            btn(f"📱 {mask_phone(acc['phone'])} | {label}", f"tga_del_{acc['id']}", ButtonStyle.DANGER),
-        ])
-    if pages > 1:
-        rows.append(_pager_row("tga_page_", page, pages))
-    rows.append([btn("➕ افزودن اکانت جدید", "tga_add", ButtonStyle.SUCCESS)])
-    rows.append([btn("🔙 بازگشت", "menu_telegram", ButtonStyle.PRIMARY)])
-
-    await callback.message.answer(
-        f"📱 <b>اکانت‌های تلگرام</b>\n"
-        f"📊 مجموع اکانت‌های شما: {len(accounts)}\n"
-        f"🌍 مجموع اکانت‌های ربات: {len(get_all_tg_accounts())}\n"
-        "برای حفظ حریم خصوصی، شماره‌ها مخفی هستند.\n"
-        "روی هر اکانت بزنید تا حذف شود:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-        parse_mode="HTML",
-    )
-
-
-async def tga_delete_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    try:
-        acc_id = int(callback.data.split("_")[-1])
-    except ValueError:
-        return
-    delete_tg_account(tg_id, acc_id)
-    await callback.message.answer("✅ اکانت حذف شد.", reply_markup=kb_telegram(tg_id))
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  تلگرام — افزودن اکانت (شماره + کد + رمز)
-# ══════════════════════════════════════════════════════════════════════
-def _tg_gate_msg() -> str:
-    return (
-        "⛔ این بخش نیازمند اشتراک فعال و دسترسی اختصاصی است.\n"
-        "از منو «خرید اشتراک» را بزنید یا با پشتیبانی تماس بگیرید."
-    )
-
-
-async def tga_add_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    if not has_tg_access(tg_id):
-        await callback.message.answer(_tg_gate_msg(), reply_markup=kb_buy())
-        return
-
-    await callback.message.answer(
-        "📱 شماره تلگرام را با کد کشور بفرستید:\nمثال: +989123456789",
-        reply_markup=kb_menu_return(),
-    )
-    await state.set_state(Form.tg_phone)
-
-
-def _tg_lock(tg_id: int) -> asyncio.Lock:
-    lock = TG_LOGIN_LOCKS.get(tg_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        TG_LOGIN_LOCKS[tg_id] = lock
-    return lock
-
-
-async def _tg_send_code(tg_id: int, phone: str) -> str:
-    """کلاینت تازه می‌سازد، کد می‌فرستد و hash کد را برای ورود ذخیره می‌کند."""
-    await _close_tg_login(tg_id)
-    client = new_tg_client()
-    await client.connect()
-    try:
-        sent = await client.send_code_request(phone)
-    except Exception:
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
-        raise
-
-    code_hash = getattr(sent, "phone_code_hash", "") or ""
-    TG_LOGIN_CLIENTS[tg_id] = client
-    TG_LOGIN_META[tg_id] = {
-        "phone": phone,
-        "hash": code_hash,
-        "sent_at": time.time(),
-        "tries": 0,
-    }
-    logger.info("tg send_code ok for %s (hash=%s)", tg_phone_key(phone), bool(code_hash))
-    return code_hash
-
-
-async def _tg_resend_code(tg_id: int, phone: str) -> str:
-    """کد جدید می‌فرستد (کد قبلی باطل می‌شود) و hash تازه را برمی‌گرداند."""
-    client = TG_LOGIN_CLIENTS.get(tg_id)
-    if client is None:
-        return await _tg_send_code(tg_id, phone)
-
-    try:
-        if not client.is_connected():
-            await client.connect()
-        sent = await client.send_code_request(phone)
-    except Exception as exc:
-        logger.warning("tg resend on old client failed (%s); building new client", exc)
-        return await _tg_send_code(tg_id, phone)
-
-    code_hash = getattr(sent, "phone_code_hash", "") or ""
-    TG_LOGIN_META[tg_id] = {
-        "phone": phone,
-        "hash": code_hash,
-        "sent_at": time.time(),
-        "tries": 0,
-    }
-    logger.info("tg resend_code ok for %s (hash=%s)", tg_phone_key(phone), bool(code_hash))
-    return code_hash
-
-
-async def tg_receive_phone(message: Message, state: FSMContext) -> None:
-    tg_id = message.from_user.id
-    if not has_tg_access(tg_id):
-        await message.answer(_tg_gate_msg(), reply_markup=kb_buy())
-        await state.set_state(Form.main_menu)
-        return
-
-    raw = message.contact.phone_number if message.contact else (message.text or "")
-    phone = normalize_tg_phone(raw)
-    if not phone or not validate_tg_phone(phone):
-        await message.answer("❌ شماره نامعتبر است.\nمثال: +989123456789")
-        return
-
-    lock = _tg_lock(tg_id)
-    if lock.locked():
-        await message.answer("⏳ درخواست قبلی در حال انجام است. چند لحظه صبر کنید.")
-        return
-
-    async with lock:
-        meta = TG_LOGIN_META.get(tg_id) or {}
-        existing = TG_LOGIN_CLIENTS.get(tg_id)
-        same_phone = tg_phone_key(meta.get("phone")) == tg_phone_key(phone)
-        still_fresh = (time.time() - float(meta.get("sent_at") or 0)) < TG_CODE_TTL
-
-        # اگر همین الان برای همین شماره کد فرستاده‌ایم، دوباره نفرست
-        # (ارسال دوباره، کد قبلی را باطل می‌کند و کاربر را سردرگم می‌کند)
-        if existing and same_phone and still_fresh and meta.get("hash"):
-            await state.update_data(tg_phone=phone)
-            await state.set_state(Form.tg_code)
-            await message.answer(
-                "✅ کد این شماره همین چند لحظه پیش ارسال شده و هنوز معتبر است.\n"
-                "همان کد پیامک‌شده را وارد کنید.\n\n"
-                "اگر کدی نرسیده یا کد قبلی را گم کرده‌اید، از دکمه زیر کد جدید بگیرید:",
-                reply_markup=kb_tg_resend(),
-            )
-            return
-
-        await message.answer("⏳ اتصال به تلگرام و ارسال کد...")
-        try:
-            await _tg_send_code(tg_id, phone)
-        except errors.FloodWaitError as exc:
-            await message.answer(
-                f"⏳ تلگرام محدودیت گذاشته. {fmt_time(exc.seconds)} دیگر تلاش کنید.",
-                reply_markup=kb_telegram(tg_id),
-            )
-            await state.set_state(Form.main_menu)
-            return
-        except errors.PhoneNumberInvalidError:
-            await message.answer("❌ شماره از نظر تلگرام نامعتبر است. با کد کشور بفرستید: +98912...")
-            return
-        except errors.PhoneNumberBannedError:
-            await message.answer("❌ این شماره در تلگرام مسدود شده است.")
-            return
-        except errors.ApiIdInvalidError:
-            logger.error("TELEGRAM_API_ID/HASH نامعتبر است")
-            await message.answer("❌ تنظیمات API ربات (api_id/api_hash) مشکل دارد. به ادمین اطلاع بدهید.")
-            await state.set_state(Form.main_menu)
-            return
-        except Exception as exc:
-            logger.exception("tg send_code: %s", exc)
-            await message.answer(f"❌ خطا در ارسال کد:\n{str(exc)[:150]}")
-            return
-
-    await state.update_data(tg_phone=phone)
-    await state.set_state(Form.tg_code)
-    await message.answer(
-        "✅ کد تایید ارسال شد.\n"
-        "کد ارسال‌شده را وارد کنید:\n\n"
-        "⚠️ فقط «جدیدترین» کد را بفرستید. هر بار ارسال کد جدید، کد قبلی باطل می‌شود.",
-        reply_markup=kb_tg_resend(),
-    )
-
-
-async def tg_receive_code(message: Message, state: FSMContext) -> None:
-    tg_id = message.from_user.id
-    code = re.sub(r"\D", "", (message.text or "").translate(
-        str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")))
-    data = await state.get_data()
-    meta = TG_LOGIN_META.get(tg_id) or {}
-    phone = data.get("tg_phone") or meta.get("phone") or ""
-    client = TG_LOGIN_CLIENTS.get(tg_id)
-
-    if not client or not phone:
-        await message.answer(
-            "❌ جلسه ورود منقضی شده. دوباره «افزودن اکانت تلگرام» را بزنید.",
-            reply_markup=kb_telegram(tg_id),
-        )
-        await state.set_state(Form.main_menu)
-        return
-    if not (4 <= len(code) <= 7):
-        await message.answer("❌ کد باید ۴ تا ۷ رقم باشد. دوباره:")
-        return
-
-    lock = _tg_lock(tg_id)
-    if lock.locked():
-        await message.answer("⏳ کد قبلی در حال بررسی است. چند لحظه صبر کنید.")
-        return
-
-    async with lock:
-        try:
-            if not client.is_connected():
-                await client.connect()
-        except Exception as exc:
-            logger.error("tg reconnect: %s", exc)
-            await message.answer("❌ ارتباط با تلگرام قطع شد. دوباره اکانت اضافه کنید.")
-            await _close_tg_login(tg_id)
-            await state.set_state(Form.main_menu)
-            return
-
-        try:
-            # hash ذخیره‌شده را صریح می‌فرستیم تا هیچ‌وقت با کد اشتباه نشود
-            await client.sign_in(phone, code, phone_code_hash=meta.get("hash") or None)
-        except errors.SessionPasswordNeededError:
-            await state.update_data(tg_phone=phone)
-            await message.answer("🔐 این اکانت رمز دو مرحله‌ای (2FA) دارد.\nرمز را وارد کنید:")
-            await state.set_state(Form.tg_password)
-            return
-        except errors.PhoneCodeInvalidError:
-            meta["tries"] = int(meta.get("tries") or 0) + 1
-            TG_LOGIN_META[tg_id] = meta
-            if meta["tries"] >= 5:
-                await message.answer(
-                    "❌ تعداد تلاش‌های اشتباه زیاد شد. دوباره «افزودن اکانت» را بزنید.",
-                    reply_markup=kb_telegram(tg_id),
-                )
-                await _close_tg_login(tg_id)
-                await state.set_state(Form.main_menu)
-            else:
-                await message.answer(f"❌ کد اشتباه است ({meta['tries']}/۵). دوباره:")
-            return
-        except errors.PhoneCodeExpiredError:
-            # کد باطل شده؛ خودکار کد تازه می‌فرستیم تا کاربر مجبور به شروع از صفر نباشد
-            try:
-                await _tg_resend_code(tg_id, phone)
-            except errors.FloodWaitError as exc:
-                await message.answer(f"⏳ {fmt_time(exc.seconds)} صبر کنید و دوباره تلاش کنید.")
-                return
-            except Exception as exc:
-                logger.exception("tg auto-resend: %s", exc)
-                await message.answer("❌ ارسال کد جدید ممکن نشد. دوباره «افزودن اکانت» را بزنید.")
-                await _close_tg_login(tg_id)
-                await state.set_state(Form.main_menu)
-                return
-            await state.set_state(Form.tg_code)
-            await message.answer(
-                "♻️ کد قبلی منقضی شده بود؛ برای شما یک کد «جدید» ارسال شد.\n"
-                "لطفاً فقط جدیدترین کد پیامک‌شده را وارد کنید:",
-                reply_markup=kb_tg_resend(),
-            )
-            return
-        except errors.PhoneNumberUnoccupiedError:
-            await message.answer("❌ این شماره اکانت تلگرام ندارد. ابتدا در تلگرام ثبت‌نام کنید.")
-            await _close_tg_login(tg_id)
-            await state.set_state(Form.main_menu)
-            return
-        except errors.FloodWaitError as exc:
-            await message.answer(f"⏳ {fmt_time(exc.seconds)} صبر کنید و دوباره تلاش کنید.")
-            return
-        except Exception as exc:
-            logger.exception("tg sign_in: %s", exc)
-            await message.answer(f"❌ خطا:\n{str(exc)[:150]}")
-            return
-
-    await _finish_tg_login_safe(message, client, phone)
-    await state.set_state(Form.main_menu)
-
-
-async def tg_resend_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    data = await state.get_data()
-    phone = data.get("tg_phone") or (TG_LOGIN_META.get(tg_id) or {}).get("phone", "")
-    if not phone:
-        await callback.message.answer(
-            "❌ ابتدا شماره را بفرستید.",
-            reply_markup=kb_telegram(tg_id),
-        )
-        await state.set_state(Form.tg_phone)
-        return
-
-    lock = _tg_lock(tg_id)
-    if lock.locked():
-        await callback.message.answer("⏳ درخواست قبلی در حال انجام است. چند لحظه صبر کنید.")
-        return
-
-    async with lock:
-        try:
-            await _tg_resend_code(tg_id, phone)
-        except errors.FloodWaitError as exc:
-            await callback.message.answer(f"⏳ {fmt_time(exc.seconds)} صبر کنید و دوباره تلاش کنید.")
-            return
-        except Exception as exc:
-            logger.exception("tg resend: %s", exc)
-            await callback.message.answer(f"❌ خطا در ارسال کد جدید:\n{str(exc)[:150]}")
-            return
-
-    await state.update_data(tg_phone=phone)
-    await state.set_state(Form.tg_code)
-    await callback.message.answer(
-        "♻️ کد جدید ارسال شد.\nلطفاً فقط جدیدترین کد را وارد کنید:",
-        reply_markup=kb_tg_resend(),
-    )
-
-
-async def tg_receive_password(message: Message, state: FSMContext) -> None:
-    tg_id = message.from_user.id
-    password = (message.text or "").strip()
-    data = await state.get_data()
-    phone = data.get("tg_phone") or (TG_LOGIN_META.get(tg_id) or {}).get("phone", "")
-    client = TG_LOGIN_CLIENTS.get(tg_id)
-
-    if not client:
-        await message.answer(
-            "❌ جلسه ورود منقضی شده. دوباره اکانت اضافه کنید.",
-            reply_markup=kb_telegram(tg_id),
-        )
-        await state.set_state(Form.main_menu)
-        return
-    if not password:
-        await message.answer("❌ رمز نمی‌تواند خالی باشد.")
-        return
-
-    lock = _tg_lock(tg_id)
-    if lock.locked():
-        await message.answer("⏳ در حال بررسی رمز قبلی. چند لحظه صبر کنید.")
-        return
-
-    async with lock:
-        try:
-            if not client.is_connected():
-                await client.connect()
-            await client.sign_in(password=password)
-        except errors.PasswordHashInvalidError:
-            await message.answer("❌ رمز اشتباه است. دوباره:")
-            return
-        except errors.FloodWaitError as exc:
-            await message.answer(f"⏳ {fmt_time(exc.seconds)} صبر کنید.")
-            return
-        except Exception as exc:
-            logger.exception("tg 2fa: %s", exc)
-            await message.answer(f"❌ خطا:\n{str(exc)[:150]}")
-            return
-
-    await _finish_tg_login_safe(message, client, phone)
-    await state.set_state(Form.main_menu)
-
-
-async def _finish_tg_login_safe(message: Message, client: TelegramClient, phone: str) -> None:
-    """ثبت اکانت با گزارش خطای واضح به کاربر (اشکال دیتابیس/سشن)."""
-    try:
-        await _finish_tg_login(message, client, phone)
-    except Exception as exc:
-        logger.exception("finish tg login: %s", exc)
-        await _close_tg_login(message.from_user.id)
-        await message.answer(
-            "❌ ورود انجام شد ولی ذخیره اکانت با خطا مواجه شد:\n"
-            f"{str(exc)[:200]}\n\n"
-            "دوباره تلاش کنید؛ اگر تکرار شد به ادمین اطلاع بدهید.",
-            reply_markup=kb_telegram(message.from_user.id),
-        )
-
-
-async def _close_tg_login(tg_id: int) -> None:
-    client = TG_LOGIN_CLIENTS.pop(tg_id, None)
-    TG_LOGIN_META.pop(tg_id, None)
-    if client:
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
-
-
-async def _finish_tg_login(message: Message, client: TelegramClient, phone: str) -> None:
-    tg_id = message.from_user.id
-    try:
-        authorized = await client.is_user_authorized()
-    except Exception:
-        authorized = False
-    if not authorized:
-        raise RuntimeError("ورود کامل نشد؛ دوباره تلاش کنید.")
-
-    session_str = client.session.save()
-    try:
-        me = await client.get_me()
-        label = (me.first_name or "اکانت") + (f" @{me.username}" if getattr(me, "username", None) else "")
-        uid = getattr(me, "id", "")
-    except Exception:
-        label, uid = "اکانت", ""
-
-    add_tg_account(tg_id, phone, session_str, label)
-    await _close_tg_login(tg_id)
-
-    await message.answer(
-        "✅ اکانت تلگرام اضافه شد!\n\n"
-        f"📱 {mask_phone(phone)}\n"
-        f"👤 {label}\n"
-        f"🆔 {uid}\n\n"
-        f"📱 مجموع اکانت‌های شما: {len(get_tg_accounts(tg_id))}\n"
-        f"🌍 مجموع اکانت‌های ربات: {len(get_all_tg_accounts())}",
-        reply_markup=kb_telegram(tg_id),
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  تلگرام — شروع عملیات
-# ══════════════════════════════════════════════════════════════════════
-TG_KINDS = {
-    "tgr_channel": ("channel", "کانال/گروه"),
-    "tgr_post": ("post", "پست"),
-    "tgr_profile": ("profile", "پروفایل"),
-    "tgr_bot": ("bot", "ربات"),
-    "tgr_account": ("account", "اکانت"),
-    "tgr_manual": ("manual", "دستی"),
-}
-
-
-async def tgr_select_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    if not has_tg_access(tg_id):
-        await callback.message.answer(_tg_gate_msg(), reply_markup=kb_buy())
-        return
-
-    kind, label = TG_KINDS[callback.data]
-    accounts = tg_pool(tg_id)
-    if not accounts:
-        await callback.message.answer(
-            "❌ هنوز هیچ اکانت تلگرامی در ربات ثبت نشده است.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [btn("➕ افزودن اکانت", "tga_add", ButtonStyle.SUCCESS)],
-                [btn("🔙 بازگشت", "menu_telegram", ButtonStyle.PRIMARY)],
-            ]),
-        )
-        return
-
-    await state.update_data(tg_kind=kind, tg_label=label, pool_mode=POOL_ALL)
-    await callback.message.answer(
-        f"📝 نوع گزارش: <b>{label}</b>\n\n"
-        f"👥 در ربات {len(accounts)} اکانت تلگرام اد شده است (شامل اکانت‌های خودتان).\n"
-        f"با چند اکانت گزارش بزنم؟ (۱ تا {len(accounts)})",
-        reply_markup=kb_menu_return(),
-        parse_mode="HTML",
-    )
-    await state.set_state(Form.tg_accounts)
-
-
-async def tg_receive_accounts(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    tg_id = message.from_user.id
-    if not text.isdigit() or int(text) < 1:
-        await message.answer("❌ عدد مثبت وارد کنید.", reply_markup=kb_menu_return())
-        return
-
-    data = await state.get_data()
-    total = len(tg_pool(tg_id))
-    n = int(text)
-    if n > total:
-        await message.answer(f"❌ فقط {total} اکانت موجود است. عدد کمتر:", reply_markup=kb_menu_return())
-        return
-
-    kind = data.get("tg_kind")
-    await state.update_data(tg_use=n)
-
-    if kind == "post":
-        await message.answer(
-            "🔗 لینک پست‌ها را بفرستید (هر خط یک لینک، ۱ تا ۶ عدد):\n"
-            "مثال: https://t.me/username/123",
-            reply_markup=kb_menu_return(),
-        )
-        await state.set_state(Form.tg_links)
-    else:
-        await message.answer(
-            "🔗 لینک/یوزرنیم/آیدی هدف را بفرستید:\n"
-            "مثال: @username یا https://t.me/username یا -1001234567890",
-            reply_markup=kb_menu_return(),
-        )
-        await state.set_state(Form.tg_target)
-
-
-async def tg_receive_target(message: Message, state: FSMContext) -> None:
-    target = (message.text or "").strip()
-    if not target:
-        await message.answer("❌ هدف خالی است.", reply_markup=kb_menu_return())
-        return
-    await state.update_data(tg_target=target, tg_links=[])
-    await message.answer(
-        f"🎯 هدف: <code>{target}</code>\n\n"
-        "اکانت‌ها قبل از گزارش به هدف جوین شوند؟\n"
-        "(برای کانال/گروه مفید است)",
-        reply_markup=kb_join_choice(),
-        parse_mode="HTML",
-    )
-    await state.set_state(Form.tg_join)
-
-
-async def tg_receive_links(message: Message, state: FSMContext) -> None:
-    links = [x.strip() for x in (message.text or "").splitlines() if x.strip()]
-    if not links:
-        await message.answer("❌ حداقل یک لینک بفرستید.", reply_markup=kb_menu_return())
-        return
-    if len(links) > 6:
-        await message.answer("❌ حداکثر ۶ لینک مجاز است.", reply_markup=kb_menu_return())
-        return
-
-    await state.update_data(tg_target=links[0], tg_links=links)
-    await message.answer(
-        f"🔗 {len(links)} پست انتخاب شد.\n\n"
-        "اکانت‌ها قبل از گزارش به کانال جوین شوند؟",
-        reply_markup=kb_join_choice(),
-    )
-    await state.set_state(Form.tg_join)
-
-
-async def tg_join_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    should_join = callback.data == "tgjoin_yes"
-    await state.update_data(tg_join=should_join)
-    await callback.message.answer(
-        "📝 دلیل گزارش را انتخاب کنید:",
-        reply_markup=kb_reason(),
-    )
-    await state.set_state(Form.tg_reason)
-
-
-async def tg_reason_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    tg_id = callback.from_user.id
-    if not has_tg_access(tg_id):
-        await callback.message.answer(_tg_gate_msg(), reply_markup=kb_buy())
-        return
-
-    key = callback.data.replace("tgreason_", "")
-    if key not in TG_REASONS:
-        return
-    await state.update_data(tg_reason=key)
-
-    data = await state.get_data()
-    if data.get("tg_kind") == "manual":
-        await callback.message.answer(
-            "📝 متن گزارش سفارشی را بنویسید (حداقل ۴ کاراکتر):",
-            reply_markup=kb_menu_return(),
-        )
-        await state.set_state(Form.tg_manual)
-    else:
-        await callback.message.answer(
-            "🔢 تعداد گزارش هر اکانت؟ (۱ تا ۱۰۰)",
-            reply_markup=kb_menu_return(),
-        )
-        await state.set_state(Form.tg_per_acc)
-
-
-async def tg_receive_manual(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    if len(text) < 4:
-        await message.answer("❌ حداقل ۴ کاراکتر بنویسید.", reply_markup=kb_menu_return())
-        return
-    await state.update_data(tg_other_text=text)
-    await message.answer(
-        "🔢 تعداد گزارش هر اکانت؟ (۱ تا ۱۰۰)",
-        reply_markup=kb_menu_return(),
-    )
-    await state.set_state(Form.tg_per_acc)
-
-
-async def tg_receive_per_acc(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    if not text.isdigit() or not (1 <= int(text) <= 100):
-        await message.answer("❌ عددی بین ۱ تا ۱۰۰ وارد کنید.", reply_markup=kb_menu_return())
-        return
-    await state.update_data(tg_per=int(text))
-    await message.answer(
-        "⏱️ هر چند ثانیه یک گزارش ارسال شود؟\n\n"
-        "عددی که می‌فرستی دقیقاً همان فاصله بین گزارش‌ها می‌شود.\n"
-        "پیشنهاد: ۳ ثانیه یا بیشتر — مثال: 3",
-        reply_markup=kb_menu_return(),
-    )
-    await state.set_state(Form.tg_delay)
-
-
-async def tg_receive_delay(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    tg_id = message.from_user.id
-    if not text.isdigit() or int(text) < 1:
-        await message.answer("❌ عدد مثبت (ثانیه) وارد کنید.", reply_markup=kb_menu_return())
-        return
-
-    delay = int(text)
-    data = await state.get_data()
-    kind = data.get("tg_kind")
-    label = data.get("tg_label", kind)
-    target = data.get("tg_target", "")
-    links = data.get("tg_links") or []
-    reason_key = data.get("tg_reason", "8")
-    per = int(data.get("tg_per", 1))
-    use = int(data.get("tg_use", 1))
-    join = bool(data.get("tg_join"))
-    other_text = data.get("tg_other_text", "")
-
-    accounts = tg_pool(tg_id)[:use]
-    if not accounts:
-        await message.answer("❌ اکانتی موجود نیست.", reply_markup=kb_menu_return())
-        await state.set_state(Form.main_menu)
-        return
-
-    target_count = max(1, len(links)) if kind == "post" else 1
-    planned = per * len(accounts) * target_count
-    remaining = remaining_quota(tg_id)
-    if remaining is not None and planned > remaining:
-        await message.answer(
-            f"❌ سقف باقی‌مانده اشتراک: {remaining} گزارش.\n"
-            f"این عملیات {planned} گزارش نیاز دارد.",
-            reply_markup=kb_buy(),
-        )
-        await state.set_state(Form.main_menu)
-        return
-
-    reason_label = TG_REASONS.get(reason_key, ("سایر",))[0]
-    op_id = op_start(tg_id, "telegram", target, reason_label, planned)
-
-    status_msg = await message.answer(
-        f"🚀 شروع گزارش تلگرام\n"
-        f"📝 نوع: {label}\n"
-        f"🎯 هدف: <code>{target}</code>\n"
-        f"📦 برنامه: {planned} گزارش | ⏱ {delay} ثانیه | 👥 {len(accounts)} اکانت\n"
-        f"📡 پیشرفت را از «عملیات زنده» ببینید.\n"
-        f"⛔ توقف: /stop",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [btn("📡 عملیات زنده", "live_ops", ButtonStyle.SUCCESS)],
-            [btn("🛑 توقف", "stop_op", ButtonStyle.DANGER)],
-        ]),
-        parse_mode="HTML",
-    )
-
-    asyncio.create_task(tg_pipeline(
-        tg_id=tg_id,
-        accounts=accounts,
-        kind=kind,
-        target=target,
-        links=links,
-        reason_key=reason_key,
-        per=per,
-        delay=delay,
-        join=join,
-        other_text=other_text,
-        status_message=status_msg,
-        op_id=op_id,
-        planned=planned,
-    ))
-    await state.set_state(Form.main_menu)
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  تلگرام — اجرای گزارش با Telethon
-# ══════════════════════════════════════════════════════════════════════
-async def tg_pipeline(tg_id: int, accounts: list[dict], kind: str, target: str,
-                      links: list[str], reason_key: str, per: int, delay: int,
-                      join: bool, other_text: str, status_message: Message,
-                      op_id: int, planned: int) -> None:
-    user_stop[tg_id] = False
-    reason_obj, reason_default, _ = TG_REASONS.get(reason_key, TG_REASONS["8"])
-    reason_label = TG_REASONS.get(reason_key, ("سایر",))[0]
-
-    total_ok = 0
-    total_fail = 0
-    lines: list[str] = []
-    target_status = "unknown"
-
-    for idx, acc in enumerate(accounts, 1):
-        if user_stop.get(tg_id):
-            break
-
-        label = acc.get("label") or mask_phone(acc.get("phone"))
-        client = new_tg_client(acc["session_str"])
-        acc_ok = 0
-        acc_fail = 0
-        try:
-            await client.connect()
-            if not await client.is_user_authorized():
-                acc_fail = per * (len(links) if kind == "post" else 1)
-                lines.append(f"🔴 {label}: سشن منقضی شده")
-                total_fail += acc_fail
-                op_progress(op_id, 0, acc_fail)
-                continue
-
-            # ── حل هدف‌ها ──
-            resolved: list[tuple[object, Optional[int]]] = []
-            if kind == "post":
-                for ln in links:
-                    try:
-                        ent = await tg_resolve_entity(client, ln)
-                        _, mid = parse_tg_link(ln)
-                        if ent:
-                            resolved.append((ent, mid))
-                    except _tg_ban_errors():
-                        target_status = "suspended"
-                    except Exception as exc:
-                        logger.error("tg resolve post %s: %s", ln, exc)
-            else:
-                try:
-                    ent = await tg_resolve_entity(client, target)
-                    if ent:
-                        resolved.append((ent, None))
-                        target_status = "active"
-                except _tg_ban_errors():
-                    target_status = "suspended"
-                except Exception as exc:
-                    logger.error("tg resolve %s: %s", target, exc)
-
-            if not resolved:
-                acc_fail = per * max(1, len(links) if kind == "post" else 1)
-                lines.append(f"🔴 {label}: هدف پیدا نشد/مسدود است")
-                total_fail += acc_fail
-                op_progress(op_id, 0, acc_fail)
-                continue
-
-            # ── جوین ──
-            if join:
-                for ent, _mid in resolved:
-                    try:
-                        await client(JoinChannelRequest(ent))
-                        await asyncio.sleep(random.uniform(1, 2))
-                    except errors.UserAlreadyParticipantError:
-                        pass
-                    except Exception:
-                        pass
-
-            # ── گزارش ──
-            for i in range(per):
-                if user_stop.get(tg_id):
-                    break
-                for ent, mid in resolved:
-                    if user_stop.get(tg_id):
-                        break
-                    try:
-                        await tg_send_report(client, ent, mid, reason_obj,
-                                             other_text if kind == "manual" else reason_default)
-                        acc_ok += 1
-                        target_status = "active"
-                    except errors.FloodWaitError as exc:
-                        wait = min(exc.seconds, 30)
-                        await asyncio.sleep(wait)
-                        try:
-                            await tg_send_report(client, ent, mid, reason_obj,
-                                                 other_text if kind == "manual" else reason_default)
-                            acc_ok += 1
-                            target_status = "active"
-                        except Exception:
-                            acc_fail += 1
-                    except _tg_ban_errors():
-                        acc_fail += 1
-                        target_status = "suspended"
-                    except Exception as exc:
-                        acc_fail += 1
-                        logger.error("tg report %s: %s", target, exc)
-                if i < per - 1:
-                    await asyncio.sleep(delay)     # دقیقاً فاصله‌ای که کاربر وارد کرد
-
-        except Exception as exc:
-            logger.error("tg account %s: %s", label, exc)
-            acc_fail += max(0, per - acc_ok - acc_fail)
-        finally:
-            try:
-                await client.disconnect()
-            except Exception:
-                pass
-
-        total_ok += acc_ok
-        total_fail += acc_fail
-        op_progress(op_id, acc_ok, acc_fail)
-        lines.append(f"{'🟢' if acc_fail == 0 else '🟡'} {label}: ✅ {acc_ok} | ❌ {acc_fail}")
-
-        try:
-            done = total_ok + total_fail
-            pct = int(done * 100 / planned) if planned else 0
-            bar = "🟩" * (pct // 10) + "⬜" * (10 - pct // 10)
-            await status_message.edit_text(
-                f"🚀 گزارش تلگرام در حال اجرا...\n"
-                f"{bar} {pct}%\n"
-                f"✅ {total_ok} | ❌ {total_fail} | 📦 {planned}\n"
-                f"🎯 <code>{target}</code>",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [btn("🛑 توقف", "stop_op", ButtonStyle.DANGER)],
-                ]),
-            )
-        except Exception:
-            pass
-
-    stopped = user_stop.get(tg_id)
-    op_progress(op_id, 0, 0, "stopped" if stopped else "done")
-
-    log_report(tg_id, "telegram", target, kind, reason_label, total_ok, total_fail)
-    if total_ok > 0:
-        consume_reports(tg_id, total_ok)
-    set_target_status(tg_id, "telegram", target, target_status)
-
-    summary = (
-        "📊 <b>نتیجه گزارش تلگرام</b>\n"
-        f"🎯 <code>{target}</code>\n\n"
-        + "\n".join(lines)
-        + f"\n\n✅ مجموع موفق: {total_ok}\n❌ مجموع ناموفق: {total_fail}\n"
-        + (f"🛑 عملیات متوقف شد" if stopped else "🏁 پایان عملیات")
-    )
-    try:
-        await status_message.answer(summary, parse_mode="HTML")
-        await status_message.answer("🏠 منو:", reply_markup=kb_main(tg_id))
-    except Exception:
-        pass
-
-    if REPORT_GROUP_ID:
-        try:
-            await status_message.bot.send_message(
-                REPORT_GROUP_ID,
-                f"📊 گزارش عملیات تلگرام\n👤 {tg_id}\n🎯 {target}\n{reason_label}\n"
-                f"✅ {total_ok} | ❌ {total_fail}",
-            )
-        except Exception as exc:
-            logger.error("report group: %s", exc)
-
-# ══════════════════════════════════════════════════════════════════════
 #  پنل مدیریت — اشتراک و کاربران
 # ══════════════════════════════════════════════════════════════════════
 def is_blocked(tg_id: int) -> bool:
@@ -3858,10 +2536,8 @@ def user_summary_text(uid: int) -> str:
         f"📅 انقضا: {fmt_dt(u.get('premium_until'))}\n"
         f"📦 سقف: {'بی‌نهایت' if quota <= 0 else quota} | "
         f"مصرف: {used} | باقی: {left}\n"
-        f"🚀 دسترسی تلگرام: {'✅ دارد' if u.get('tg_access') else '⛔ ندارد'}\n"
         f"🚫 بلاک: {'✅ بله' if u.get('is_blocked') else '❌ خیر'}\n\n"
         f"📱 اکانت روبیکا: {len(get_rubika_accounts(uid))}\n"
-        f"✈️ اکانت تلگرام: {len(get_tg_accounts(uid))}\n"
         f"📢 کل گزارش: {u.get('total_reports', 0)}\n"
         f"👥 دعوت‌ها: {u.get('total_invites', 0)}\n"
         f"🎁 آخرین جایزه: {fmt_dt(u.get('last_daily_reward'))}\n"
@@ -3871,18 +2547,10 @@ def user_summary_text(uid: int) -> str:
 
 def kb_admin_user(uid: int) -> InlineKeyboardMarkup:  # type: ignore[misc]
     u = get_user(uid) or {}
-    tg_on = bool(u.get("tg_access"))
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             btn("👑 تغییر/تمدید اشتراک", f"adm_sub_{uid}", ButtonStyle.SUCCESS),
             btn("✍️ سفارشی", f"adm_custom_{uid}", ButtonStyle.PRIMARY),
-        ],
-        [
-            btn(
-                f"🚀 دسترسی تلگرام: {'✅ روشن' if tg_on else '⛔ خاموش'}",
-                f"adm_toggle_tg_{uid}",
-                ButtonStyle.SUCCESS if tg_on else ButtonStyle.DANGER,
-            )
         ],
         [
             btn("📋 گزارش‌های اخیر", f"adm_logs_{uid}", ButtonStyle.PRIMARY),
@@ -3993,16 +2661,12 @@ async def admin_panel_callback(callback: CallbackQuery, state: FSMContext) -> No
         tb = sum(1 for u in users if u.get("is_blocked"))
         running = len(get_running_ops(None))
         rb_sessions = len(get_all_rubika_sessions())
-        tg_sessions = 0
-        for u in users:
-            tg_sessions += len(get_tg_accounts(u["telegram_id"]))
         await callback.message.answer(
             "📊 <b>آمار ربات</b>\n\n"
             f"👥 کل کاربران: {total}\n"
             f"👑 اشتراکی‌ها: {prem}\n"
             f"🚫 بلاک‌شده‌ها: {tb}\n"
             f"📱 سشن روبیکا: {rb_sessions}\n"
-            f"✈️ اکانت تلگرام: {tg_sessions}\n"
             f"📡 عملیات در حال اجرا: {running}\n"
             f"📢 کل گزارش‌ها: {reps}",
             reply_markup=kb_admin_panel(),
@@ -4089,7 +2753,7 @@ async def admin_user_cb(callback: CallbackQuery, state: FSMContext) -> None:
             uid, quota, hours = int(parts[2]), int(parts[3]), int(parts[4])
         except (IndexError, ValueError):
             return
-        grant_subscription(uid, quota, hours, sub_type="gift", tg_access=True)
+        grant_subscription(uid, quota, hours, sub_type="gift")
         await _notify_user(uid, callback.bot)
         await _show_admin_user(callback.message, uid)
         return
@@ -4115,14 +2779,6 @@ async def admin_user_cb(callback: CallbackQuery, state: FSMContext) -> None:
             reply_markup=kb_admin_subs(uid),
             parse_mode="HTML",
         )
-        return
-
-    if data.startswith("adm_toggle_tg_"):
-        uid = int(data.split("_")[-1])
-        u = get_user(uid)
-        if u:
-            upsert_user(uid, tg_access=0 if u.get("tg_access") else 1)
-        await _show_admin_user(callback.message, uid)
         return
 
     if data.startswith("adm_reset_"):
@@ -4231,8 +2887,7 @@ async def _notify_user(uid: int, bot: Bot) -> None:
             uid,
             "🎁 <b>اشتراک شما توسط ادمین تنظیم شد</b>\n\n"
             f"📦 سقف: {'بی‌نهایت' if quota <= 0 else quota} گزارش\n"
-            f"📅 انقضا: {fmt_dt(u.get('premium_until'))}\n"
-            "🚀 ریپورتر تلگرام: فعال",
+            f"📅 انقضا: {fmt_dt(u.get('premium_until'))}\n",
             reply_markup=kb_main(uid),
             parse_mode="HTML",
         )
@@ -4270,7 +2925,7 @@ async def cmd_grant(message: Message) -> None:
         target_id = int(args[0])
         quota = int(args[1])
         hours = int(args[2]) if len(args) > 2 else 720
-        grant_subscription(target_id, quota, hours, sub_type="gift", tg_access=True)
+        grant_subscription(target_id, quota, hours, sub_type="gift")
         await message.answer(
             f"✅ اشتراک برای {target_id} تنظیم شد.\n"
             f"📦 سقف: {'بی‌نهایت' if quota <= 0 else quota} | ⏳ {hours} ساعت"
@@ -4344,7 +2999,7 @@ async def receive_admin_reply(message: Message, state: FSMContext) -> None:
                 return
             quota = int(data.get("sub_quota", 0))
             hours = int(txt)
-            grant_subscription(target_id, quota, hours, sub_type="gift", tg_access=True)
+            grant_subscription(target_id, quota, hours, sub_type="gift")
             await _notify_user(target_id, message.bot)
             await message.answer(
                 f"✅ اشتراک کاربر {target_id} تنظیم شد.\n"
@@ -4469,7 +3124,6 @@ async def _rt_cb_locked(callback: CallbackQuery, state: FSMContext) -> None:
 SIMPLE_CALLBACKS = {
     "back_menu": back_to_menu,
     "menu_rubika": menu_rubika_cb,
-    "menu_telegram": menu_telegram_cb,
     "account_status": account_status,
     "subscription": subscription_cb,
     "help": help_cb,
@@ -4486,9 +3140,6 @@ SIMPLE_CALLBACKS = {
     "rb_accounts": rb_accounts_cb,
     "rb_username": rb_username_cb,
     "rb_guid_manual": rb_guid_manual_cb,
-    "tga_add": tga_add_cb,
-    "tga_list": tga_list_cb,
-    "tg_resend": tg_resend_cb,
 }
 
 
@@ -4521,24 +3172,13 @@ async def process_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if data.startswith("admin_") or data in ("admin_panel",):
         return await admin_panel_callback(callback, state)
 
-    # ── روبیکا / تلگرام ──
+    # ── روبیکا ──
     if data.startswith("rb_del_"):
         return await rb_delete_cb(callback, state)
-    if data.startswith("tga_del_"):
-        return await tga_delete_cb(callback, state)
     if data == "rt_confirm" or data.startswith("rt_"):
         return await rt_cb(callback, state)
-    if data.startswith("tgreason_"):
-        return await tg_reason_cb(callback, state)
-    if data in ("tgjoin_yes", "tgjoin_no"):
-        return await tg_join_cb(callback, state)
-    if data in TG_KINDS:
-        return await tgr_select_cb(callback, state)
-
     if data.startswith("rb_acc_"):
         return await rb_accounts_cb(callback, state)
-    if data.startswith("tga_page_"):
-        return await tga_list_cb(callback, state)
     handler = SIMPLE_CALLBACKS.get(data)
     if handler:
         return await handler(callback, state)
@@ -4574,6 +3214,8 @@ async def global_error_handler(update: Update, exception: Exception) -> bool:
 def build_app() -> tuple[Bot, Dispatcher]:
     init_db()
     mark_stale_ops()
+    if not TELEGRAM_TOKEN:
+        raise RuntimeError("BOT_TOKEN را در متغیرهای محیطی Wasmer تنظیم کنید.")
     bot = Bot(token=TELEGRAM_TOKEN)
     dp = Dispatcher()
     router = Router()
@@ -4600,19 +3242,6 @@ def build_app() -> tuple[Bot, Dispatcher]:
     router.message.register(rb_receive_type_gap, Form.rb_type_gap, F.text)
     router.message.register(rb_receive_accounts, Form.rb_accounts, F.text)
 
-    # ── تلگرام: لاگین ──
-    router.message.register(tg_receive_phone, Form.tg_phone, F.text | F.contact)
-    router.message.register(tg_receive_code, Form.tg_code, F.text)
-    router.message.register(tg_receive_password, Form.tg_password, F.text)
-
-    # ── تلگرام: گزارش ──
-    router.message.register(tg_receive_accounts, Form.tg_accounts, F.text)
-    router.message.register(tg_receive_target, Form.tg_target, F.text)
-    router.message.register(tg_receive_links, Form.tg_links, F.text)
-    router.message.register(tg_receive_manual, Form.tg_manual, F.text)
-    router.message.register(tg_receive_per_acc, Form.tg_per_acc, F.text)
-    router.message.register(tg_receive_delay, Form.tg_delay, F.text)
-
     # ── بقیه ──
     router.message.register(receive_receipt, Form.receipt)
     router.message.register(receive_support_message, Form.support_message)
@@ -4638,7 +3267,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
